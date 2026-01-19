@@ -1,0 +1,14 @@
+/* 
+   BACKGROUND IMAGES FOR LIGHT/DARK MODE
+   
+   Tệp cần được thêm vào thư mục này:
+   1. background-dark.jpg - Hình nền cho chế độ tối (màu tối, tối màu)
+   2. background-light.jpg - Hình nền cho chế độ sáng (màu sáng, nhẹ)
+   
+   Đặt tên file như sau:
+   - c:\Users\admin\Dự án giao và nộp bài tập\my-web-app\client\public\background-dark.jpg
+   - c:\Users\admin\Dự án giao và nộp bài tập\my-web-app\client\public\background-light.jpg
+   
+   Kích thước khuyến nghị: 1920x1080 hoặc cao hơn
+   Định dạng: JPG, PNG hoặc WebP
+*/
