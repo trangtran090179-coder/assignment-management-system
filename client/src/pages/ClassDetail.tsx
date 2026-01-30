@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getClassById, getClassAssignments, getClassStudents } from '../services/api';
+import { getClassById, getClassAssignments, getClassStudents, getClassQuizzes } from '../services/api';
 
 interface ClassDetailProps {
     user: any;
@@ -11,9 +11,10 @@ const ClassDetail: React.FC<ClassDetailProps> = ({ user }) => {
     const navigate = useNavigate();
     const [classData, setClassData] = useState<any>(null);
     const [assignments, setAssignments] = useState<any[]>([]);
+    const [quizzes, setQuizzes] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'assignments' | 'students'>('assignments');
+    const [activeTab, setActiveTab] = useState<'assignments' | 'students' | 'quizzes'>('assignments');
 
     useEffect(() => {
         if (id) {
@@ -30,6 +31,15 @@ const ClassDetail: React.FC<ClassDetailProps> = ({ user }) => {
             
             const assignmentsList = await getClassAssignments(classId);
             setAssignments(assignmentsList);
+
+            // Load quizzes for this class so they are visible on the class page
+            try {
+                const quizzesList = await getClassQuizzes(classId);
+                setQuizzes(quizzesList);
+            } catch (err) {
+                console.error('Lỗi khi tải quiz của lớp:', err);
+                setQuizzes([]);
+            }
             
             // Load students for everyone (teacher and student) to get updated student count
             const studentsList = await getClassStudents(classId);
@@ -67,6 +77,13 @@ const ClassDetail: React.FC<ClassDetailProps> = ({ user }) => {
                     style={{ cursor: 'pointer' }}
                 >
                     Bài tập
+                </div>
+                <div 
+                    className={`tab ${activeTab === 'quizzes' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('quizzes')}
+                    style={{ cursor: 'pointer' }}
+                >
+                    Quiz
                 </div>
                 {user.role === 'teacher' && (
                     <div 
@@ -108,6 +125,34 @@ const ClassDetail: React.FC<ClassDetailProps> = ({ user }) => {
                                         )}
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {activeTab === 'quizzes' && (
+                    <>
+                        <h2>Quiz Trắc nghiệm</h2>
+                        {quizzes.length === 0 ? (
+                            <div className="empty-state-small">
+                                <p>Chưa có quiz nào</p>
+                            </div>
+                        ) : (
+                            <div className="assignment-list">
+                                        {quizzes.map(quiz => (
+                                            <div 
+                                                key={quiz.id} 
+                                                className="assignment-card"
+                                                onClick={() => navigate(`/quiz/${quiz.id}/start`)}
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                <div className="assignment-main">
+                                                    <h3>{quiz.title}</h3>
+                                                    <p>{quiz.description}</p>
+                                                    <p>Hạn nộp: {new Date(quiz.dueDate).toLocaleDateString('vi-VN')}</p>
+                                                </div>
+                                            </div>
+                                        ))}
                             </div>
                         )}
                     </>

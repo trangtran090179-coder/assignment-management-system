@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 
 // Mock user database (in production, use real database)
 const users: any[] = [];
+
+const secretKey = process.env.JWT_SECRET || 'your_secret_key';
 
 export class AuthController {
     async login(req: Request, res: Response) {
@@ -26,12 +29,15 @@ export class AuthController {
                 });
             }
 
-            // Return user data (without password)
+            // Create JWT token to authenticate requests
             const { password: _, ...userWithoutPassword } = user;
+            const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, secretKey, { expiresIn: '7d' });
+
             res.json({ 
                 success: true, 
                 message: 'Đăng nhập thành công',
-                user: userWithoutPassword 
+                user: userWithoutPassword,
+                token,
             });
         } catch (error) {
             res.status(500).json({ 
@@ -67,12 +73,15 @@ export class AuthController {
 
             users.push(newUser);
 
-            // Return user data (without password)
+            // Return user data (without password) and token
             const { password: _, ...userWithoutPassword } = newUser;
+            const token = jwt.sign({ id: newUser.id, role: newUser.role, email: newUser.email }, secretKey, { expiresIn: '7d' });
+
             res.status(201).json({ 
                 success: true, 
                 message: 'Đăng ký thành công',
-                user: userWithoutPassword 
+                user: userWithoutPassword,
+                token,
             });
         } catch (error) {
             res.status(500).json({ 

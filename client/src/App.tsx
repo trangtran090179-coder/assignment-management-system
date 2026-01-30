@@ -11,6 +11,7 @@ import ClassDetail from './pages/ClassDetail';
 import AssignmentDetail from './pages/AssignmentDetail';
 import CreateQuiz from './pages/CreateQuiz';
 import TakeQuiz from './pages/TakeQuiz';
+import StartQuiz from './pages/StartQuiz';
 import QuizResult from './pages/QuizResult';
 import './styles/main.css';
 
@@ -49,6 +50,7 @@ const App: React.FC = () => {
             <Route path="/assignment/:id" element={user ? <AssignmentDetail user={user} /> : <Navigate to="/login" />} />
             <Route path="/quiz/create/:classId" element={user && user.role === 'teacher' ? <CreateQuiz classId={0} teacherId={user.id} /> : <Navigate to="/login" />} />
             <Route path="/quiz/:quizId/take" element={user && user.role === 'student' ? <TakeQuiz user={user} /> : <Navigate to="/login" />} />
+            <Route path="/quiz/:quizId/start" element={user && user.role === 'student' ? <StartQuiz /> : <Navigate to="/login" />} />
             <Route path="/quiz/:quizId/result/:studentId" element={user ? <QuizResult user={user} /> : <Navigate to="/login" />} />
             <Route path="/" element={user ? <Navigate to={user.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'} /> : <Navigate to="/login" />} />
           </Routes>

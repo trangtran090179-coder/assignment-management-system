@@ -8,12 +8,20 @@ interface AuthRequest extends Request {
 }
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
-    const token = req.headers['authorization']?.split(' ')[1];
-    
-    if (!token) return res.sendStatus(401);
+    const authHeader = req.headers['authorization'];
+    console.log('[AUTH] Authorization header:', authHeader);
+    const token = typeof authHeader === 'string' ? authHeader.split(' ')[1] : undefined;
+
+    if (!token) {
+        console.warn('[AUTH] No token provided');
+        return res.sendStatus(401);
+    }
 
     jwt.verify(token, secretKey, (err: any, user: any) => {
-        if (err) return res.sendStatus(403);
+        if (err) {
+            console.warn('[AUTH] Token verification failed:', err.message);
+            return res.sendStatus(403);
+        }
         req.user = user;
         next();
     });

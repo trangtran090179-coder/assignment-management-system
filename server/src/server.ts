@@ -9,6 +9,7 @@ import setAssignmentRoutes from './routes/assignmentRoutes';
 import setSubmissionRoutes from './routes/submissionRoutes';
 import setQuizRoutes from './routes/quizRoutes';
 import setQuizImportRoutes from './routes/quizImportRoutes';
+import setAnticheatRoutes from './routes/anticheatRoutes';
 import { connectDatabase } from './config/database';
 import { setAssignmentsCountGetter, setAssignmentsListGetter, getClassByCode } from './controllers/classController';
 import { getAssignmentsCountByClass, getAssignmentsByClass } from './controllers/assignmentController';
@@ -121,6 +122,7 @@ setAssignmentRoutes(app);
 setSubmissionRoutes(app);
 setQuizRoutes(app);
 setQuizImportRoutes(app);
+setAnticheatRoutes(app);
 
 // Start the server
 app.listen(PORT, () => {

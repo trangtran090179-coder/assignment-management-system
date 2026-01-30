@@ -221,6 +221,110 @@ body {
     border: 1px solid var(--border-color);
 }
 
+/* StartQuiz card styles (theme-aware) */
+.start-quiz-wrap {
+    max-width: 920px;
+    margin: 80px auto 24px;
+    padding: 0 16px;
+}
+.start-quiz-card {
+    padding: 28px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    box-shadow: 0 8px 40px rgba(2,6,23,0.35);
+}
+.start-quiz-title {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 22px;
+    text-align: center;
+}
+.start-quiz-code {
+    text-align: center;
+    margin-top: 8px;
+    color: var(--text-secondary);
+}
+.start-quiz-grid {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    justify-content: center; /* center columns horizontally inside the card */
+    align-items: center; /* align column content vertically */
+}
+
+/* Row layout: label and value per row for consistent mobile rendering */
+.start-quiz-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.03);
+}
+.start-quiz-label {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+.start-quiz-label span {
+    font-weight: 600;
+}
+.start-quiz-value {
+    color: var(--text-primary);
+    text-align: right;
+    min-width: 90px;
+}
+
+@media (min-width: 769px) {
+    /* On wider screens, keep two-column presentation by allowing grid-like behavior */
+    .start-quiz-grid {
+        display: grid;
+        grid-template-columns: 1fr 240px;
+        gap: 20px 24px;
+        align-items: start;
+    }
+    .start-quiz-row { border-bottom: none; padding: 0; display: block; }
+    .start-quiz-label, .start-quiz-value { display: block; text-align: left; }
+}
+.start-quiz-left ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    color: var(--text-secondary);
+}
+.start-quiz-right {
+    width: 240px;
+    text-align: right;
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 18px;
+}
+.start-quiz-desc { color: var(--text-secondary); margin-top: 22px; }
+.start-quiz-btn {
+    margin-top: 20px;
+    width: 100%;
+    background: #ff7a18;
+    color: #fff;
+    border: none;
+    padding: 14px 18px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .start-quiz-grid { flex-direction: column; }
+    .start-quiz-right { width: 100%; text-align: left; }
+}
+
 /* Header */
 .header {
     position: sticky;
@@ -332,6 +436,56 @@ body {
 .app-container {
     min-height: calc(100vh - 200px);
     padding: 2rem;
+}
+
+/* Mobile layout fixes: reduce header size and avoid forcing large min-height
+   which causes vertical overflow on small screens. These rules override
+   spacing/padding for better fit on phones. */
+@media (max-width: 768px) {
+    .header {
+        padding: 0.7rem 1rem;
+    }
+
+    .header-container {
+        padding: 0 12px;
+    }
+
+    .nav {
+        gap: 0.4rem;
+    }
+
+    .btn-logout, .btn-register, .btn-theme {
+        padding: 0.45rem 0.9rem;
+        font-size: 0.95rem;
+    }
+
+    .start-quiz-wrap {
+        margin: 20px auto 12px;
+        padding: 0 12px;
+    }
+
+    .start-quiz-card {
+        padding: 16px;
+    }
+
+    .start-quiz-grid {
+        gap: 12px;
+    }
+
+    /* Avoid forcing the app container to be taller than the viewport */
+    .app-container {
+        min-height: auto;
+        padding: 1rem;
+    }
+
+    .hero {
+        padding: 2rem 1rem;
+    }
+
+    .modal-card {
+        padding: 1.2rem;
+        max-height: 88vh;
+    }
 }
 
 /* Landing Page */
@@ -1906,9 +2060,16 @@ body {
 }
 
 [data-theme="light"] .assignment-meta,
-[data-theme="light"] .class-meta,
-[data-theme="light"] .description-box {
+[data-theme="light"] .class-meta {
     color: var(--text-secondary);
+}
+
+[data-theme="light"] .description-box {
+    background: rgba(255, 255, 255, 0.85) !important;
+    color: var(--text-primary);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
 [data-theme="light"] .submission-item,

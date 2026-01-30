@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getQuizForStudent, submitQuiz } from '../services/api';
+import useExamMonitor from '../hooks/useExamMonitor';
 import CountdownTimer from '../components/CountdownTimer';
 
 interface Question {
@@ -28,17 +29,30 @@ interface TakeQuizProps {
 const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
     const { quizId } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [quiz, setQuiz] = useState<QuizData | null>(null);
     const [answers, setAnswers] = useState<number[]>([]);
     const [loading, setLoading] = useState(true);
+    const [readOnly, setReadOnly] = useState(false);
+    const [existingAttempt, setExistingAttempt] = useState<any | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+    const [inExam, setInExam] = useState(false);
     const [error, setError] = useState('');
     const [startTime, setStartTime] = useState<Date>(new Date());
     const [timeExpired, setTimeExpired] = useState(false);
+    const examMode = new URLSearchParams(location.search).get('exam') === '1';
+
+    const examMonitor = useExamMonitor(quizId!, user?.id ?? 0);
 
     useEffect(() => {
         loadQuiz();
+        try {
+            setInExam(localStorage.getItem('inExam') === 'true');
+        } catch (e) {
+            setInExam(false);
+        }
     }, [quizId]);
 
     // Auto-submit when time expires
@@ -54,11 +68,34 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
         return () => clearTimeout(timeoutId);
     }, [quiz]);
 
+    // Warn on page unload in exam mode to prevent accidental leaving
+    useEffect(() => {
+        if (!examMode || submitted) return;
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [examMode, submitted]);
+
     const loadQuiz = async () => {
         try {
             setLoading(true);
             const data = await getQuizForStudent(quizId!);
-            
+            // If server returned an existing attempt, redirect immediately to results
+            if (data?.alreadySubmitted && data.attempt) {
+                try {
+                    navigate(`/quiz/${quizId}/result/${data.attempt.studentId}`, { replace: true });
+                    return;
+                } catch (e) {
+                    // fallback: set read-only state if navigation fails
+                    setExistingAttempt(data.attempt);
+                    setReadOnly(true);
+                }
+            }
             // Shuffle questions if needed
             let questions = [...data.questions];
             if (data.shuffleQuestions) {
@@ -74,8 +111,15 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
             }
 
             setQuiz({ ...data, questions });
-            setAnswers(new Array(questions.length).fill(-1)); // -1 means not answered
+            // If existing attempt provided, prefill answers, otherwise init to -1
+            if (data?.attempt && Array.isArray(data.attempt.answers)) {
+                setAnswers(data.attempt.answers);
+            } else {
+                setAnswers(new Array(questions.length).fill(-1)); // -1 means not answered
+            }
             setStartTime(new Date());
+            // mark first question start for monitoring
+            try { examMonitor?.markQuestionStart(questions[0]?.id ?? 0); } catch (e) {}
         } catch (err: any) {
             setError('Không thể tải quiz: ' + err.message);
         } finally {
@@ -96,6 +140,7 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
         const newAnswers = [...answers];
         newAnswers[questionIndex] = optionIndex;
         setAnswers(newAnswers);
+        try { examMonitor?.markQuestionAnswered(quiz?.questions[questionIndex]?.id ?? questionIndex); } catch (e) {}
     };
 
     const calculateTimeSpent = () => {
@@ -120,21 +165,45 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
             setSubmitting(true);
             const timeSpent = calculateTimeSpent();
 
+            // end monitoring session before submitting
+            try { await examMonitor?.endSession(); } catch (e) { console.error('exam end error', e); }
+
+            const studentIdToSend = Number(user?.id ?? user?._id ?? 0);
+            const studentNameToSend = user?.name || user?.username || user?.email || 'Student';
+
             const result = await submitQuiz(quizId!, {
-                studentId: user.id,
-                studentName: user.username,
+                studentId: studentIdToSend,
+                studentName: studentNameToSend,
                 answers: answers,
                 timeSpent: timeSpent
             });
 
             alert(`Nộp bài thành công! Điểm của bạn: ${result.score}/100`);
-            navigate(`/quiz/${quizId}/result/${user.id}`);
+            setSubmitted(true);
+            // Prefer studentId returned by server (in case client id format differs)
+            const resultStudentId = result?.attempt?.studentId ?? studentIdToSend;
+            // clear exam mode
+            try { localStorage.removeItem('inExam'); } catch (e) {}
+            // navigate to result (use replace to avoid leaving a stale history entry)
+            try {
+                navigate(`/quiz/${quizId}/result/${resultStudentId}`, { replace: true });
+            } catch (e) {
+                // fallback: if navigate fails for any reason, keep submitted state so UI updates
+                console.error('[TakeQuiz] navigate error:', e);
+            }
         } catch (err: any) {
             setError('Lỗi khi nộp bài: ' + (err.response?.data?.message || err.message));
         } finally {
             setSubmitting(false);
         }
     };
+
+    // ensure monitoring session ended on unmount
+    useEffect(() => {
+        return () => {
+            try { examMonitor?.endSession(); } catch (e) {}
+        };
+    }, []);
 
     const handleTimeExpired = () => {
         setTimeExpired(true);
@@ -154,17 +223,20 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
         return (
             <div style={styles.container}>
                 <div style={styles.error}>{error}</div>
-                <button onClick={() => navigate(-1)} style={styles.backBtn}>
-                    ← Quay lại
-                </button>
+                <div style={{ textAlign: 'center' }}>
+                    <button onClick={() => navigate(-1)} style={styles.backBtn}>← Quay lại</button>
+                </div>
             </div>
         );
     }
 
-    if (!quiz) {
+    if (submitted) {
         return (
             <div style={styles.container}>
-                <div style={styles.error}>Không tìm thấy quiz</div>
+                <div style={styles.loading}>✅ Bài thi đã được nộp. Chuyển hướng tới trang kết quả...</div>
+                <div style={{ textAlign: 'center', marginTop: 16 }}>
+                    <button onClick={() => navigate(`/quiz/${quizId}/result/${user.id}`)} style={styles.submitBtn}>Xem kết quả</button>
+                </div>
             </div>
         );
     }
@@ -198,6 +270,20 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
                 )}
             </div>
 
+            {readOnly && existingAttempt && (
+                <div style={{ maxWidth: '800px', margin: '12px auto', padding: 12 }}>
+                    <div style={{ padding: 12, backgroundColor: '#eef7ff', border: '1px solid #cfe8ff', borderRadius: 8 }}>
+                        <strong>Bạn đã làm quiz này rồi.</strong>
+                        <div style={{ marginTop: 6 }}>
+                            Điểm: {existingAttempt.score ?? '-'} • Thời gian: {existingAttempt.timeSpent ?? '-'} phút
+                        </div>
+                        <div style={{ marginTop: 8 }}>
+                            <button onClick={() => navigate(`/quiz/${quizId}/result/${existingAttempt.studentId}`)} style={{ ...styles.submitBtn, padding: '8px 16px' }}>Xem kết quả</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Progress Bar */}
             <div style={styles.progressContainer}>
                 <div style={styles.progressBar}>
@@ -230,13 +316,14 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
                                         ...(answers[qIndex] === oIndex ? styles.optionSelected : {})
                                     }}
                                 >
-                                    <input
-                                        type="radio"
-                                        name={`question-${qIndex}`}
-                                        checked={answers[qIndex] === oIndex}
-                                        onChange={() => handleAnswerChange(qIndex, oIndex)}
-                                        style={styles.optionRadio}
-                                    />
+                                        <input
+                                            type="radio"
+                                            name={`question-${qIndex}`}
+                                            checked={answers[qIndex] === oIndex}
+                                            onChange={() => handleAnswerChange(qIndex, oIndex)}
+                                            style={styles.optionRadio}
+                                            disabled={readOnly}
+                                        />
                                     <span style={styles.optionLetter}>
                                         {String.fromCharCode(65 + oIndex)}
                                     </span>
@@ -253,17 +340,27 @@ const TakeQuiz: React.FC<TakeQuizProps> = ({ user }) => {
                 <button
                     onClick={() => navigate(-1)}
                     style={styles.cancelBtn}
-                    disabled={submitting}
+                    disabled={submitting || timeExpired || inExam}
                 >
                     ← Hủy
                 </button>
-                <button
-                    onClick={handleSubmit}
-                    style={styles.submitBtn}
-                    disabled={submitting || timeExpired}
-                >
-                    {submitting ? '⏳ Đang nộp bài...' : '✅ Nộp bài'}
-                </button>
+                {!readOnly && (
+                    <button
+                        onClick={handleSubmit}
+                        style={styles.submitBtn}
+                        disabled={submitting || timeExpired}
+                    >
+                        {submitting ? '⏳ Đang nộp bài...' : '✅ Nộp bài'}
+                    </button>
+                )}
+                {readOnly && existingAttempt && (
+                    <button
+                        onClick={() => navigate(`/quiz/${quizId}/result/${existingAttempt.studentId}`)}
+                        style={styles.submitBtn}
+                    >
+                        Xem kết quả của bạn
+                    </button>
+                )}
             </div>
 
             {/* Warning */}

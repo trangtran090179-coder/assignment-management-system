@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClass, getClasses, deleteClass, createAssignment, getAssignmentSubmissions, gradeSubmission, deleteAssignment, getClassAssignments, getClassQuizzes, deleteQuiz } from '../services/api';
+import { createClass, getClasses, deleteClass, createAssignment, getAssignmentSubmissions, gradeSubmission, deleteAssignment, getClassAssignments, getClassQuizzes, deleteQuiz, getQuizAttempts } from '../services/api';
 import QuizModal from '../components/QuizModal';
 import ImportQuizModal from '../components/ImportQuizModal';
 
@@ -72,6 +72,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user }) => {
     const [showImportQuiz, setShowImportQuiz] = useState(false);
     const [selectedClassForImport, setSelectedClassForImport] = useState<any>(null);
     const [allQuizzes, setAllQuizzes] = useState<any[]>([]);
+    const [showQuizAttemptsModal, setShowQuizAttemptsModal] = useState(false);
+    const [selectedQuizForAttempts, setSelectedQuizForAttempts] = useState<any>(null);
+    const [quizAttempts, setQuizAttempts] = useState<any[]>([]);
 
     // Load classes from database when component mounts
     useEffect(() => {
@@ -580,10 +583,24 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user }) => {
                                     <div className="assignment-progress">
                                         <button 
                                             className="btn-small btn-primary"
-                                            onClick={() => navigate(`/quiz/${quiz.id}/result/0`)}
+                                            onClick={async () => {
+                                                try {
+                                                    setLoading(true);
+                                                    setSelectedQuizForAttempts(quiz);
+                                                    setShowQuizAttemptsModal(true);
+                                                    const attempts = await getQuizAttempts(String(quiz.id));
+                                                    setQuizAttempts(attempts.attempts || attempts || []);
+                                                } catch (err) {
+                                                    console.error('Lỗi khi tải kết quả quiz:', err);
+                                                    alert('Không thể tải kết quả quiz');
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
                                         >
                                             Xem kết quả
                                         </button>
+                                        
                                         <button 
                                             className="btn-small btn-secondary"
                                             style={{ marginLeft: '0.5rem' }}
@@ -687,6 +704,44 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user }) => {
                             <button className="btn btn-secondary" onClick={() => setShowSubmissionsModal(false)}>
                                 Đóng
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showQuizAttemptsModal && selectedQuizForAttempts && (
+                <div className="modal-overlay" onClick={() => setShowQuizAttemptsModal(false)}>
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '80vh', overflowY: 'auto' }}>
+                        <h3>Kết quả quiz: {selectedQuizForAttempts.title}</h3>
+                        <div style={{ marginBottom: 12 }}>
+                            <strong>Số lượt làm:</strong> {quizAttempts.length}
+                        </div>
+                        <div className="submission-list">
+                            {quizAttempts.length === 0 ? (
+                                <div className="empty-state-small">
+                                    <p>Chưa có học sinh nào làm quiz này</p>
+                                </div>
+                            ) : (
+                                quizAttempts.map((attempt: any, idx: number) => (
+                                    <div key={idx} className="submission-item">
+                                        <div className="student-info">
+                                            <h4>{attempt.studentName || `Student ${attempt.studentId}`}</h4>
+                                            <p>Nộp lúc: {new Date(attempt.submittedAt).toLocaleString('vi-VN')}</p>
+                                            <p style={{ color: '#38a169' }}>✅ Điểm: {attempt.score}/100</p>
+                                        </div>
+                                        <div className="submission-actions">
+                                            <button className="btn-small btn-primary" onClick={() => {
+                                                // Navigate to the student's result page
+                                                navigate(`/quiz/${selectedQuizForAttempts.id}/result/${attempt.studentId}`);
+                                                setShowQuizAttemptsModal(false);
+                                            }}>Xem</button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="modal-actions" style={{ marginTop: '1rem' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowQuizAttemptsModal(false)}>Đóng</button>
                         </div>
                     </div>
                 </div>

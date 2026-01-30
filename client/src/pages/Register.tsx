@@ -32,6 +32,10 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
 
             if (data.success) {
                 // Registration successful
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                }
+                localStorage.setItem('user', JSON.stringify(data.user));
                 onRegister(data.user);
             } else {
                 setError(data.message || 'Đăng ký thất bại');

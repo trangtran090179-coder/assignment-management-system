@@ -10,6 +10,19 @@ const apiClient = axios.create({
     },
 });
 
+// Attach token from localStorage to every request if available
+apiClient.interceptors.request.use((config) => {
+    try {
+        const token = localStorage.getItem('token');
+        if (token && config.headers) {
+            (config.headers as any)['Authorization'] = `Bearer ${token}`;
+        }
+    } catch (e) {
+        // ignore
+    }
+    return config;
+}, (error) => Promise.reject(error));
+
 export const fetchUsers = async () => {
     const response = await apiClient.get('/users');
     return response.data;
@@ -259,3 +272,5 @@ export const getQuizAttempts = async (id: string) => {
     const response = await apiClient.get(`/quizzes/${id}/attempts`);
     return response.data;
 };
+
+export default apiClient;

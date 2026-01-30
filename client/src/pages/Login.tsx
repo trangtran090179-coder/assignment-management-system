@@ -30,6 +30,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
             if (data.success) {
                 // Login successful
+                // Store user and token for authenticated requests
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                }
+                localStorage.setItem('user', JSON.stringify(data.user));
                 onLogin(data.user);
             } else {
                 setError(data.message || 'Đăng nhập thất bại');

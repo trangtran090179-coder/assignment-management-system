@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mammoth from 'mammoth';
 import * as path from 'path';
 import * as fs from 'fs';
+import { parseDocxToQuestionsWithFallback } from '../utils/docxConverter';
 
 interface ParsedQuestion {
     question: string;
@@ -23,34 +24,87 @@ export class QuizImportController {
             const filePath = req.file.path;
             console.log('File path:', filePath);
 
-            // Read và parse file Word
-            const result = await mammoth.extractRawText({ path: filePath });
-            const text = result.value;
-            console.log('Extracted text length:', text.length);
+            // Read và parse file Word. Try buffer-based extraction first (more reliable),
+            // fallback to path-based extraction if needed.
+            let text = '';
+            try {
+                const fileBuffer = fs.readFileSync(filePath);
+                const result = await mammoth.extractRawText({ buffer: fileBuffer });
+                text = result.value;
+                console.log('Extracted text length (buffer):', text.length);
+            } catch (e1) {
+                console.warn('[MAMMOTH] buffer extraction failed, trying path-based extraction', e1 && (e1 as any).message || e1);
+                try {
+                    const result = await mammoth.extractRawText({ path: filePath });
+                    text = result.value;
+                    console.log('Extracted text length (path):', text.length);
+                } catch (e2) {
+                    console.error('[MAMMOTH] both buffer and path extraction failed', e2 && (e2 as any).message || e2);
+                    throw e2;
+                }
+            }
 
-            // Parse text thành questions
-            const questions = this.parseQuestions(text);
-            console.log('Parsed questions:', questions.length);
+            // Try HTML-aware parsing first, then raw-text fallback inside the util
+            let parsed = await parseDocxToQuestionsWithFallback(filePath);
+            console.log('Parsed (combined) questions:', parsed.length);
 
-            // Delete uploaded file
-            fs.unlinkSync(filePath);
+            // If still nothing, fallback to legacy text parser (controller-local)
+            if (!parsed || parsed.length === 0) {
+                const questionsLegacy = this.parseQuestions(text);
+                console.log('Parsed (legacy text) questions:', questionsLegacy.length);
+                try { fs.unlinkSync(filePath); } catch (e) { }
+                if (!questionsLegacy || questionsLegacy.length === 0) {
+                    const rawPreview = text ? String(text).substring(0, 10000) : '';
+                    return res.status(400).json({ 
+                        message: 'Không thể parse câu hỏi từ file. Vui lòng kiểm tra định dạng file.',
+                        rawText: rawPreview
+                    });
+                }
 
-            if (questions.length === 0) {
+                const transformedLegacy = questionsLegacy.map(q => ({
+                    question: q.question,
+                    options: q.options,
+                    correctAnswer: q.correctAnswer,
+                    explanation: q.explanation
+                }));
+                return res.json({ message: `Parse thành công ${transformedLegacy.length} câu hỏi`, questions: transformedLegacy });
+            }
+
+            // Transform util-parsed questions to client format
+            const transformed: ParsedQuestion[] = parsed.map(pq => {
+                const letters = Object.keys(pq.answers).sort();
+                const options = letters.map(l => pq.answers[l]);
+                const correctLetter = pq.correct;
+                const correctIndex = correctLetter ? letters.indexOf(correctLetter) : -1;
+                return {
+                    question: pq.question,
+                    options,
+                    correctAnswer: correctIndex >= 0 ? correctIndex : -1,
+                    explanation: undefined
+                } as ParsedQuestion;
+            });
+
+            const itemsWithErrors = parsed.filter(p => p.errors && p.errors.length > 0);
+            if (itemsWithErrors.length > 0) {
+                const rawPreview = text ? String(text).substring(0, 10000) : '';
+                try { fs.unlinkSync(filePath); } catch (e) { }
                 return res.status(400).json({ 
-                    message: 'Không thể parse câu hỏi từ file. Vui lòng kiểm tra định dạng file.' 
+                    message: 'Không thể parse hoàn chỉnh. Một số câu có lỗi.',
+                    parsed: parsed,
+                    rawText: rawPreview
                 });
             }
 
-            res.json({
-                message: `Parse thành công ${questions.length} câu hỏi`,
-                questions: questions
-            });
+            // Delete uploaded file
+            try { fs.unlinkSync(filePath); } catch (e) { }
+
+            res.json({ message: `Parse thành công ${transformed.length} câu hỏi`, questions: transformed });
 
         } catch (error: any) {
-            console.error('[PARSE WORD ERROR]:', error);
+            console.error('[PARSE WORD ERROR]:', (error && error.stack) || error);
             res.status(500).json({ 
                 message: 'Lỗi khi parse file Word', 
-                error: error.message 
+                error: (error && error.message) || String(error)
             });
         }
     }
@@ -73,7 +127,8 @@ export class QuizImportController {
                 const line = lines[i];
                 
                 // Check if this is a new question
-                const questionMatch = line.match(/^(?:Câu|Question)\s*(\d+)[:\.\)]?\s*(.*)/i);
+                // Match lines like "Câu 1: ...", "Question 1.", or "1) ..." (number-only)
+                const questionMatch = line.match(/^(?:(?:Câu|Question)\s*)?(\d+)[:\.\)]?\s*(.*)/i);
                 if (questionMatch) {
                     // Save previous question if exists
                     if (currentQuestion && questionText && options.length >= 2 && correctAnswer >= 0) {
@@ -96,7 +151,12 @@ export class QuizImportController {
                 }
 
                 // Check if this is an option (A, B, C, D, etc.)
-                const optionMatch = line.match(/^([A-F])[:\.\)]\s*(.+)/i);
+                // Option lines like "A. text", "A) text", "(a) text", or "a. text"
+                let optionMatch = line.match(/^([A-Fa-f])[:\.\)]\s*(.+)/i);
+                if (!optionMatch) {
+                    optionMatch = line.match(/^\(?([A-Fa-f])\)?\s+(.+)/i);
+                }
+
                 if (optionMatch && currentQuestion) {
                     const optionLetter = optionMatch[1].toUpperCase();
                     const optionText = optionMatch[2].trim();
@@ -105,9 +165,17 @@ export class QuizImportController {
                 }
 
                 // Check if this is the correct answer
-                const answerMatch = line.match(/^(?:Đáp án|Answer|Correct)[:\.]?\s*([A-F])/i);
+                const answerMatch = line.match(/^(?:Đáp án|Answer|Correct)[:\.]?\s*([A-Fa-f])/i);
                 if (answerMatch && currentQuestion) {
                     const letter = answerMatch[1].toUpperCase();
+                    correctAnswer = letter.charCodeAt(0) - 'A'.charCodeAt(0);
+                    continue;
+                }
+
+                // Sometimes the answer is provided as a single letter on its own line (e.g. "B")
+                const singleLetterAnswer = line.match(/^([A-Fa-f])$/i);
+                if (singleLetterAnswer && currentQuestion && correctAnswer < 0 && options.length >= 2) {
+                    const letter = singleLetterAnswer[1].toUpperCase();
                     correctAnswer = letter.charCodeAt(0) - 'A'.charCodeAt(0);
                     continue;
                 }

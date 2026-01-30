@@ -554,7 +554,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
                                                 if (hasAttempt) {
                                                     navigate(`/quiz/${quiz.id}/result/${user.id}`);
                                                 } else {
-                                                    navigate(`/quiz/${quiz.id}/take`);
+                                                    // Go to start/lobby page which will put student into exam mode
+                                                    navigate(`/quiz/${quiz.id}/start`);
                                                 }
                                             }}
                                         >

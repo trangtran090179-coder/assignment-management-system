@@ -18,12 +18,14 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     fileFilter: (req, file, cb) => {
-        // Accept only .doc and .docx files
+        // Accept only .docx files. .doc (legacy binary) is not supported by mammoth.
         const ext = path.extname(file.originalname).toLowerCase();
-        if (ext === '.doc' || ext === '.docx') {
+        if (ext === '.docx') {
             cb(null, true);
+        } else if (ext === '.doc') {
+            cb(new Error('Định dạng .doc không được hỗ trợ. Vui lòng lưu file dưới dạng .docx'));
         } else {
-            cb(new Error('Chỉ chấp nhận file Word (.doc, .docx)'));
+            cb(new Error('Chỉ chấp nhận file Word (.docx)'));
         }
     },
     limits: {
@@ -36,10 +38,11 @@ export default function setQuizImportRoutes(app: any) {
     const controller = new QuizImportController();
 
     // Upload and parse Word file (public endpoint - no auth required)
-    router.post('/parse-word', upload.single('file'), controller.parseWordFile);
+    // Bind the controller methods to preserve `this` inside class methods
+    router.post('/parse-word', upload.single('file'), controller.parseWordFile.bind(controller));
     
     // Download template file
-    router.get('/template', controller.downloadTemplate);
+    router.get('/template', controller.downloadTemplate.bind(controller));
 
     app.use('/api/quiz-import', router);
     console.log('[ROUTES] Quiz import routes initialized');

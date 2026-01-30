@@ -21,6 +21,7 @@ const ImportQuizModal: React.FC<ImportQuizModalProps> = ({ classId, className, t
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [parsedQuestions, setParsedQuestions] = useState<Question[]>([]);
+    const [rawPreview, setRawPreview] = useState('');
     const [step, setStep] = useState<'upload' | 'preview' | 'create'>('upload');
     const hiddenFileInput = useRef<HTMLInputElement | null>(null);
     
@@ -76,19 +77,23 @@ const ImportQuizModal: React.FC<ImportQuizModalProps> = ({ classId, className, t
                 headers: token ? { 'Authorization': `Bearer ${token}` } : {},
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Lỗi khi parse file');
-            }
-
             const data = await response.json();
-            console.log('Parsed questions:', data);
+            console.log('Parsed response:', data);
+
+            if (!response.ok) {
+                // If server returns rawText for debugging, show it in the modal
+                setError(data.message || 'Lỗi khi parse file Word');
+                if (data.rawText) setRawPreview(data.rawText);
+                return;
+            }
 
             if (data.questions && data.questions.length > 0) {
                 setParsedQuestions(data.questions);
+                setRawPreview('');
                 setStep('preview');
             } else {
                 setError('Không tìm thấy câu hỏi trong file');
+                if (data.rawText) setRawPreview(data.rawText);
             }
 
         } catch (err: any) {
@@ -161,6 +166,12 @@ const ImportQuizModal: React.FC<ImportQuizModalProps> = ({ classId, className, t
                             <label>Tiêu đề Quiz (tùy chọn)</label>
                             <input type="text" value={quizData.title} onChange={(e) => setQuizData({ ...quizData, title: e.target.value })} placeholder="VD: Kiểm tra giữa kỳ" />
                         </div>
+                        {rawPreview && (
+                            <div style={{ marginTop: '12px', padding: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                                <strong style={{ display: 'block', marginBottom: '6px' }}>Raw extracted text (preview):</strong>
+                                <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#cbd5e0' }}>{rawPreview}</pre>
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label>Mô tả (tùy chọn)</label>

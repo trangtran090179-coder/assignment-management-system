@@ -94,7 +94,26 @@ export class QuizController {
                     // Không gửi correctAnswer và explanation
                 }))
             };
-            
+            // Nếu có thông tin user từ token, kiểm tra xem user đã làm chưa
+            const authUser: any = (req as any).user;
+            if (authUser && authUser.id) {
+                const existingAttempt = quiz.attempts.find(a => Number(a.studentId) === Number(authUser.id));
+                if (existingAttempt) {
+                    // Trả thêm attempt để frontend hiển thị ngay trạng thái đã làm
+                    const attemptCopy = {
+                        studentId: existingAttempt.studentId,
+                        studentName: existingAttempt.studentName,
+                        submittedAt: existingAttempt.submittedAt,
+                        timeSpent: existingAttempt.timeSpent,
+                        score: existingAttempt.score,
+                        answers: existingAttempt.answers
+                    };
+
+                    console.log('[GET QUIZ FOR STUDENT] Quiz:', studentQuiz.id, ' - already submitted by user', authUser.id);
+                    return res.json({ ...studentQuiz, alreadySubmitted: true, attempt: attemptCopy });
+                }
+            }
+
             console.log('[GET QUIZ FOR STUDENT] Quiz:', studentQuiz.id);
             res.json(studentQuiz);
         } catch (error) {
@@ -168,7 +187,11 @@ export class QuizController {
     public async submitQuiz(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const { studentId, studentName, answers, timeSpent } = req.body;
+            let { studentId, studentName, answers, timeSpent } = req.body;
+
+            // Normalize studentId to number to avoid string/number mismatches
+            const studentIdNum = Number(studentId);
+            studentId = studentIdNum;
 
             console.log('\n===== SUBMIT QUIZ =====');
             console.log('QuizId:', id, 'StudentId:', studentId);
@@ -179,7 +202,7 @@ export class QuizController {
             }
 
             // Kiểm tra xem học sinh đã làm bài chưa
-            const existingAttempt = quiz.attempts.find(a => a.studentId === studentId);
+            const existingAttempt = quiz.attempts.find(a => Number(a.studentId) === studentIdNum);
             if (existingAttempt) {
                 return res.status(400).json({ message: 'Bạn đã nộp bài quiz này rồi' });
             }
@@ -204,7 +227,7 @@ export class QuizController {
             const score = Math.round((correctCount / quiz.questions.length) * 100);
 
             const attempt: QuizAttempt = {
-                studentId,
+                studentId: studentIdNum,
                 studentName,
                 answers,
                 score,
@@ -221,7 +244,14 @@ export class QuizController {
                 score,
                 correctCount,
                 totalQuestions: quiz.questions.length,
-                results: quiz.showAnswers ? detailedResults : undefined
+                results: quiz.showAnswers ? detailedResults : undefined,
+                attempt: {
+                    studentId: attempt.studentId,
+                    studentName: attempt.studentName,
+                    submittedAt: attempt.submittedAt,
+                    timeSpent: attempt.timeSpent,
+                    score: attempt.score
+                }
             });
         } catch (error) {
             console.error('[SUBMIT QUIZ] Error:', error);
@@ -239,7 +269,7 @@ export class QuizController {
                 return res.status(404).json({ message: 'Không tìm thấy quiz' });
             }
 
-            const attempt = quiz.attempts.find(a => a.studentId === Number(studentId));
+            const attempt = quiz.attempts.find(a => Number(a.studentId) === Number(studentId));
             if (!attempt) {
                 return res.status(404).json({ message: 'Chưa có bài làm' });
             }
